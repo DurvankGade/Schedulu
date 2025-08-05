@@ -5,7 +5,8 @@ venv/
 __pycache__/
 
 # Secrets and credentials - DO NOT PUSH TO GITHUB
-.streamlit\secrets.toml
+# Secrets - DO NOT PUSH TO GITHUB
+.streamlit/
 credentials.json
 token.pickle
 
