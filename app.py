@@ -1,5 +1,5 @@
 # ==============================================================================
-#  Schedulu: Agentic AI Study Companion (V6 - .ics Export & Deployment Ready)
+#  Schedulu: Agentic AI Study Companion (V6.2 - Final Date Fix)
 #  app.py - Main Streamlit Application File
 # ==============================================================================
 
@@ -11,7 +11,7 @@ import google.generativeai as genai
 import os
 import numpy as np
 import json
-from ics import Calendar, Event # NEW: Library for creating .ics files
+from ics import Calendar, Event
 
 # --- 2. Configure the Application Page ---
 st.set_page_config(
@@ -24,7 +24,7 @@ st.set_page_config(
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-2.5-flash-lite')
+    model = genai.GenerativeModel('gemini-1.5-flash')
 except (KeyError, Exception):
     st.error("🚨 Gemini API Key not found. Please add it to your `.streamlit/secrets.toml` file.")
     model = None
@@ -59,32 +59,35 @@ def get_mcq_quiz(topic, subject, model):
         st.error(f"Failed to generate a valid quiz for '{topic}'. The AI may have returned an unexpected format.")
         return None
 
-# Persistence Functions (Unchanged)
+# Persistence Functions
 def save_plan(df):
     df.to_csv('plan.csv', index=False)
 
+# --- MODIFIED: The first fix is here ---
 def load_plan():
+    """Loads the study plan and ensures the 'Date' column is the correct type."""
     if os.path.exists('plan.csv'):
         try:
-            return pd.read_csv('plan.csv', parse_dates=['Date'])
+            df = pd.read_csv('plan.csv')
+            # This is the key change: convert the column to datetime, then to standard python date objects.
+            df['Date'] = pd.to_datetime(df['Date']).dt.date
+            return df
         except Exception:
-            return None
+            return None # Handle corrupted or empty file
     return None
 
-# --- NEW: Function to generate .ics file content ---
+# --- MODIFIED: The second fix is here ---
 def create_ics_file(schedule_df, subject):
     """Creates the string content for a downloadable .ics calendar file."""
     c = Calendar()
     for _, row in schedule_df.iterrows():
         e = Event()
         e.name = f"Study {subject}: {row['Topic']}"
-        # The 'begin' date is set, and 'make_all_day()' handles the rest.
+        # Because we fixed the data type at the source, this line is now simple and correct.
         e.begin = row['Date']
         e.make_all_day()
         c.events.add(e)
     return str(c)
-
-# --- REMOVED: All Google Calendar OAuth and API functions are gone. ---
 
 # --- 5. State Management and Initial Load ---
 if 'plan_df' not in st.session_state:
@@ -95,7 +98,7 @@ if 'quiz_data' not in st.session_state:
     st.session_state.quiz_data = None
 
 # --- 6. UI: Sidebar ---
-# (Unchanged from previous version)
+# (Unchanged)
 with st.sidebar:
     st.image("https://streamlit.io/images/brand/streamlit-logo-secondary-colormark-darktext.png", width=200)
     st.title("Schedulu Agent")
@@ -129,7 +132,6 @@ with st.sidebar:
         st.divider()
         st.header("⚙️ Plan Controls")
         
-        # --- MODIFIED: Replaced Google Sync with .ics Download Button ---
         ics_data = create_ics_file(st.session_state.plan_df, st.session_state.get('subject_input', 'Studies'))
         st.download_button(
             label="🗓️ Download Calendar File (.ics)",
@@ -145,14 +147,13 @@ with st.sidebar:
             st.rerun()
 
 # --- 7. UI: Main Application Body ---
-# (Unchanged from previous version)
+# (Unchanged)
 st.title("🧠 Schedulu: Your Agentic Study Companion")
-
 st.markdown("""
 Welcome to **Schedulu**, your intelligent partner in exam preparation. This isn't just a scheduler; it's an **agentic AI** designed to proactively help you learn.
 
 -   **AI-Powered Planning**: Tell it your subject, and the agent researches and suggests key topics.
--   **Interactive Checklist & Saved Progress**: Track your progress with a day-by-day plan. Your work is saved to a local `plan.csv` file, so you can close the browser and your progress will be here when you return.
+-   **Interactive Checklist & Saved Progress**: Track your progress with a day-by-day plan. Your work is saved, so you can close the browser and your progress will be here when you return.
 -   **MCQ Reflection Quizzes**: When you complete a topic, the agent generates a 5-question multiple-choice quiz to test your knowledge.
 -   **Calendar Export**: Download your entire study plan as an `.ics` file, ready to import into Google Calendar, Apple Calendar, or Outlook.
 """)
@@ -189,7 +190,8 @@ else:
     st.header("✅ Your Study Checklist")
     edited_df = st.data_editor(
         plan_df,
-        column_config={"Status": st.column_config.CheckboxColumn("Done?", default=False)},
+        column_config={"Status": st.column_config.CheckboxColumn("Done?", default=False),
+                       "Date": st.column_config.DateColumn("Date", format="D MMM YYYY")},
         disabled=["Date", "Topic"], hide_index=True, use_container_width=True, key="data_editor"
     )
 
